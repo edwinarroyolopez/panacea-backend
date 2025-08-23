@@ -11,6 +11,7 @@ import { TasksModule } from './tasks/tasks.module';
 import { OrchestratorModule } from './orchestrator/orchestrator.module';
 import { LlmModule } from './llm/llm.module';
 import { FirestoreModule } from './firestore/firestore.module';
+import { ChatModule } from './chat/chat.module';
 import * as path from 'path';
 
 @Module({
@@ -35,6 +36,7 @@ import * as path from 'path';
     OrchestratorModule,
     LlmModule,
     FirestoreModule,
+    ChatModule,
   ],
   providers: [FirestoreService, GoalsResolver, LlmService],
   exports: [FirestoreService],

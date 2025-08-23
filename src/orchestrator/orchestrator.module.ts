@@ -9,7 +9,8 @@ import { PlansService } from 'src/plans/plans.service';
 import { TasksService } from 'src/tasks/tasks.service';
 
 @Module({
-  imports: [PlansModule, TasksModule, GoalsModule, LlmModule], 
+  imports: [PlansModule, TasksModule, GoalsModule, LlmModule],
   providers: [OrchestratorService, OrchestratorResolver, PlansService, TasksService],
+  exports: [OrchestratorService],
 })
-export class OrchestratorModule {}
+export class OrchestratorModule { }
