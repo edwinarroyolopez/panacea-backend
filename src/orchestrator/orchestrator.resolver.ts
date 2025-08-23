@@ -13,7 +13,7 @@ export class OrchestratorResolver {
     private readonly orch: OrchestratorService,
     private readonly plans: PlansService,
     private readonly tasks: TasksService,
-  ) {}
+  ) { }
 
   @Mutation(() => Plan)
   async generatePlan(@Args('goalId', { type: () => ID }) goalId: string): Promise<Plan> {
@@ -25,5 +25,11 @@ export class OrchestratorResolver {
   @Query(() => [Task])
   async tasksByGoal(@Args('goalId', { type: () => ID }) goalId: string): Promise<Task[]> {
     return this.tasks.byGoal(goalId);
+  }
+
+  @Mutation(() => Plan)
+  async replan(@Args('goalId', { type: () => ID }) goalId: string): Promise<Plan> {
+    const plan = await this.orch.replan(goalId);
+    return plan as any;
   }
 }

@@ -3,6 +3,7 @@ import { z } from 'zod';
 import { PlansService } from 'src/plans/plans.service';
 import { TasksService } from 'src/tasks/tasks.service';
 import { LlmService } from 'src/llm/llm.service';
+import { GoalsService } from 'src/goals/goals.service';
 
 const PlanSchemaV1 = z.object({
   summary: z.string(),
@@ -23,7 +24,9 @@ export class OrchestratorService {
     private readonly llm: LlmService,
     private readonly plans: PlansService,
     private readonly tasks: TasksService,
-  ) {}
+    private readonly goals: GoalsService,
+
+  ) { }
 
   async generatePlanForGoal(goalId: string, goalTitle: string, domain: string, target?: string) {
     const prompt = `
@@ -48,7 +51,7 @@ Reglas: sin diagnósticos médicos, seguro, incremental, basado en hábitos. Si 
     if (!parsed.success) {
       // fallback defensivo mínimo
       const now = new Date();
-      const day = now.toISOString().slice(0,10);
+      const day = now.toISOString().slice(0, 10);
       const fallback: PlanGen = {
         summary: `Plan inicial para ${goalTitle}`,
         recommendations: ['Hidratarse', 'Rutina corta', 'Registro de sueño'],
@@ -82,5 +85,11 @@ Reglas: sin diagnósticos médicos, seguro, incremental, basado en hábitos. Si 
     } as any);
     const tasks = await this.tasks.bulkCreate(plan.id, data.tasks);
     return { ...plan, tasks };
+  }
+
+  async replan(goalId: string) {
+    // TODO: puedes leer progreso real de tasks y pasarlo al prompt.
+    const goal = await this.goals.findById(goalId); // inyecta GoalsService si no estaba
+    return this.generatePlanForGoal(goal.id, goal.title, goal.domain, goal.target);
   }
 }
