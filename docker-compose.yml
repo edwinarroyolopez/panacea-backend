@@ -1,0 +1,21 @@
+services:
+  api:
+    build: ../apps/api
+    environment:
+      - FIRESTORE_EMULATOR_HOST=firestore:8080
+      - LLM_PROVIDER=openai
+      - OPENAI_API_KEY=${OPENAI_API_KEY}
+    ports: ["4000:4000"]
+    depends_on: [firestore]
+
+  web:
+    build: ../apps/web
+    environment:
+      - NEXT_PUBLIC_GRAPHQL_URL=http://localhost:4000/graphql
+    ports: ["3000:3000"]
+    depends_on: [api]
+
+  firestore:
+    image: google/cloud-sdk:emulators
+    command: ["gcloud","beta","emulators","firestore","start","--host-port=0.0.0.0:8080","--quiet"]
+    ports: ["8083:8080"]
