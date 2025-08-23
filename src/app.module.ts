@@ -1,3 +1,4 @@
+import { APP_GUARD, Reflector } from '@nestjs/core';
 import { Module } from '@nestjs/common';
 import { GraphQLModule } from '@nestjs/graphql';
 import { ApolloDriver, ApolloDriverConfig } from '@nestjs/apollo';
@@ -12,7 +13,11 @@ import { OrchestratorModule } from './orchestrator/orchestrator.module';
 import { LlmModule } from './llm/llm.module';
 import { FirestoreModule } from './firestore/firestore.module';
 import { ChatModule } from './chat/chat.module';
+import { UsersModule } from './users/users.module';
+import { AuthModule } from './auth/auth.module';
 import * as path from 'path';
+
+import { JwtAuthGuard } from './auth/jwt-auth.guard';
 
 @Module({
   imports: [
@@ -29,6 +34,7 @@ import * as path from 'path';
       driver: ApolloDriver,
       autoSchemaFile: true,
       playground: true,
+      context: ({ req, res }) => ({ req, res }),
     }),
     GoalsModule,
     PlansModule,
@@ -37,8 +43,10 @@ import * as path from 'path';
     LlmModule,
     FirestoreModule,
     ChatModule,
+    UsersModule,
+    AuthModule,
   ],
-  providers: [FirestoreService, GoalsResolver, LlmService],
+  providers: [FirestoreService, GoalsResolver, LlmService, { provide: APP_GUARD, useClass: JwtAuthGuard }],
   exports: [FirestoreService],
 })
 export class AppModule { }
