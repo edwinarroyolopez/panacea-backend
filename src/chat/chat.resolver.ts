@@ -1,6 +1,8 @@
-import { Args, ID, Int, Mutation, Query, Resolver, Context } from '@nestjs/graphql';
+// src/chat/chat.resolver.ts
+import { Args, ID, Int, Mutation, Query, Resolver } from '@nestjs/graphql';
 import { ChatService } from './chat.service';
 import { ChatMessage } from './models/chat-message.model';
+import { CurrentUser, type AuthUser } from '../auth/current-user.decorator';
 
 @Resolver(() => ChatMessage)
 export class ChatResolver {
@@ -8,18 +10,18 @@ export class ChatResolver {
 
   @Mutation(() => ChatMessage)
   async sendChat(
-    @Args('text') text: string,
-    @Context('userId') userId: string,      // <-- llega desde GraphQLModule.context
-  ): Promise<ChatMessage> {
-    return this.chat.process(text, userId);
+    @Args('text', { type: () => String }) text: string,
+    @CurrentUser() user: AuthUser,
+  ) {
+    return this.chat.process(text, user.id);
   }
 
   @Query(() => [ChatMessage])
   async chatHistory(
+    @CurrentUser() user: AuthUser, // ← requerido primero
     @Args('goalId', { type: () => ID, nullable: true }) goalId?: string,
-    @Args('limit', { type: () => Int, nullable: true }) limit?: number,
-    @Context('userId') userId?: string,
-  ): Promise<ChatMessage[]> {
-    return this.chat.history(userId ?? 'demo-user', goalId, limit ?? 30);
+    @Args('limit', { type: () => Int, nullable: true, defaultValue: 30 }) limit?: number,
+  ) {
+    return this.chat.history(user.id, goalId, limit ?? 30);
   }
 }

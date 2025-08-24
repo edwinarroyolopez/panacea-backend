@@ -1,44 +1,37 @@
+// src/goals/goals.resolver.ts
 import { Args, ID, Mutation, Query, Resolver } from '@nestjs/graphql';
 import { GoalsService } from './goals.service';
 import { Goal } from './models/goal.model';
 import { CreateGoalInput } from './dto/create-goal.input';
 import { UpdateGoalStatusInput } from './dto/update-goal-status.input';
+import { CurrentUser, type AuthUser } from 'src/auth/current-user.decorator';
 
 @Resolver(() => Goal)
 export class GoalsResolver {
-  constructor(private readonly goalsService: GoalsService) {}
-
-  // MVP: userId fijo; luego lo tomaremos del contexto (JWT)
-  private userId() {
-    return 'demo-user';
-  }
-
+  constructor(private readonly goalsService: GoalsService) { }
   @Query(() => [Goal])
-  async goals(): Promise<Goal[]> {
-    return this.goalsService.findByUser(this.userId());
+  goals(@CurrentUser() user: AuthUser) {
+    return this.goalsService.findByUser(user.id);
   }
 
   @Query(() => Goal)
-  async goal(@Args('id', { type: () => ID }) id: string): Promise<Goal> {
-    return this.goalsService.findById(id);
+  goal(@Args('id', { type: () => ID }) id: string, @CurrentUser() user: AuthUser) {
+    return this.goalsService.findByIdForUser(id, user.id);
   }
 
   @Mutation(() => Goal)
-  async upsertGoal(@Args('input') input: CreateGoalInput): Promise<Goal> {
-    return this.goalsService.upsert(this.userId(), input);
+  upsertGoal(@Args('input') input: CreateGoalInput, @CurrentUser() user: AuthUser) {
+    return this.goalsService.upsert(user.id, input);
   }
 
   @Mutation(() => Goal)
-  async updateGoalStatus(
-    @Args('input') input: UpdateGoalStatusInput,
-  ): Promise<Goal> {
-    return this.goalsService.updateStatus(input);
+  updateGoalStatus(@Args('input') input: UpdateGoalStatusInput, @CurrentUser() user: AuthUser) {
+    return this.goalsService.updateStatusForUser(user.id, input);
   }
 
   @Mutation(() => Boolean)
-  async deleteGoal(
-    @Args('goalId', { type: () => ID }) goalId: string,
-  ): Promise<boolean> {
-    return this.goalsService.softDelete(goalId);
+  deleteGoal(@Args('goalId', { type: () => ID }) goalId: string, @CurrentUser() user: AuthUser) {
+    return this.goalsService.softDeleteForUser(goalId, user.id);
   }
+
 }

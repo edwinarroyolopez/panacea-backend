@@ -45,7 +45,7 @@ export class ChatService {
         q = q.orderBy('createdAt', 'desc').limit(limit);
 
         const snap = await q.get();
-        return snap.docs.map(d => this.toMsg(d.id, d.data())).reverse(); 
+        return snap.docs.map(d => this.toMsg(d.id, d.data())).reverse();
     }
 
 
@@ -100,7 +100,13 @@ Responde SOLO JSON válido.
             goalId = goal.id;
 
             // Generar plan con el orquestador (IA)
-            const plan = await this.orch.generatePlanForGoal(goal.id, goal.title, goal.domain, goal.target);
+            const plan = await this.orch.generatePlanForGoal(
+                userId,
+                goal.id,
+                goal.title,
+                goal.domain,
+                goal.target ?? null, // ← evita el TS2345
+            );
             planId = (plan as any).id ?? plan?.id;
 
             // Mensaje de respuesta: resumen + 3 tareas

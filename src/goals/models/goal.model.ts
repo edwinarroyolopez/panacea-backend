@@ -7,10 +7,10 @@ export enum GoalDomain {
 }
 
 export enum GoalStatus {
-  ACTIVE = 'active',
-  PAUSED = 'paused',
-  COMPLETED = 'completed',
-  DELETED = 'deleted',
+  ACTIVE = 'ACTIVE',
+  PAUSED = 'PAUSED',
+  COMPLETED = 'COMPLETED',
+  DELETED = 'DELETED',
 }
 
 registerEnumType(GoalDomain, { name: 'GoalDomain' });
