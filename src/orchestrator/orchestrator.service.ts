@@ -6,6 +6,7 @@ import { TasksService } from 'src/tasks/tasks.service';
 import { LlmService } from 'src/llm/llm.service';
 import { GoalsService } from 'src/goals/goals.service';
 import { Plan } from 'src/plans/models/plan.model';
+import { getLocalYMD, makeUTCFromLocal } from 'src/utils/date.utils';
 
 const PlanSchemaV1 = z.object({
   summary: z.string(),
@@ -41,24 +42,31 @@ export class OrchestratorService {
   ): Promise<Plan> {
     // 1) Asegura que el goal pertenece al usuario
     await this.goals.findByIdForUser(goalId, userId);
-
+    const tz = 'America/Bogota'; // TODO: leer de UsersService o JWT si lo tienes
+    const todayISO = new Date().toISOString().slice(0, 10); // 2025-08-24
     // 2) Prompt al LLM
     const prompt = `
-Eres un agente de bienestar para LATAM. Genera un plan de 1 semana para el objetivo:
-- Dominio: ${domain}
-- Título: ${goalTitle}
-- Meta: ${target ?? 'N/A'}
+          Eres un agente de bienestar para LATAM. Genera un plan de 1 semana para el objetivo:
+          - Dominio: ${domain}
+          - Título: ${goalTitle}
+          - Meta: ${target ?? 'N/A'}
+          - Hoy es ${todayISO} (zona horaria ${tz})
 
-Devuelve SOLO JSON con:
-{
-  "summary": string,
-  "recommendations": string[],
-  "weeklySchedule": [{ "day": "Lunes|Martes|...", "action": string }],
-  "tasks": [{ "title": string, "dueAt": ISO8601, "scoreWeight": 1-5 }]
-}
+          Devuelve SOLO JSON con:
+          {
+            "summary": string,
+            "recommendations": string[],
+            "weeklySchedule": [{ "day": "Lunes|Martes|...", "action": string }],
+            "tasks": [{ "title": string, "dueAt": ISO8601, "scoreWeight": 1-5 }]
+          }
 
-Reglas: sin diagnósticos médicos, seguro, incremental, basado en hábitos. Si hay señales de gravedad, recomendar consultar profesional.
-`;
+          Reglas:
+          - Fechas en los PRÓXIMOS 7 días desde HOY en zona horaria America/Bogota.
+          - Nunca uses años pasados ni fechas en el pasado.
+          - Horas razonables (por ej. 21:00 para hábitos nocturnos).
+          - Sin diagnósticos médicos; si hay señales de gravedad, recomendar ver profesional.
+          `;
+
 
     const raw = await this.llm.generateJson(prompt);
 
@@ -97,13 +105,47 @@ Reglas: sin diagnósticos médicos, seguro, incremental, basado en hábitos. Si 
     return this.persist(userId, goalId, parsed.data);
   }
 
+  private normalizeTasksToUpcomingWeek(
+    tasks: PlanGen['tasks'],
+    tz = 'America/Bogota',
+  ) {
+    // Inicio de hoy (UTC). Si quieres ser estricto con TZ real, cámbialo por tu helper.
+    const start = new Date();
+    start.setUTCHours(0, 0, 0, 0);
+
+    const end = new Date(start);
+    end.setUTCDate(end.getUTCDate() + 6); // hoy + 6 = 7 días
+
+    return tasks.map((t, idx) => {
+      const parsed = new Date(t.dueAt);
+      let dt = parsed;
+
+      const invalid =
+        isNaN(parsed.getTime()) || parsed < start || parsed > end;
+
+      if (invalid) {
+        // Distribuye cíclicamente por la semana: 0..6
+        const dayOffset = idx % 7;          // <= CLAVE: no Math.min
+        dt = new Date(start);
+        dt.setUTCDate(start.getUTCDate() + dayOffset);
+        dt.setUTCHours(21, 0, 0, 0);        // hora razonable por defecto
+      }
+
+      return { ...t, dueAt: dt.toISOString() };
+    });
+  }
+
+
   /**
    * Persiste Plan (1:1 docId = goalId) + Tasks del usuario.
    */
   private async persist(userId: string, goalId: string, data: PlanGen) {
+
+    const normalized = { ...data, tasks: this.normalizeTasksToUpcomingWeek(data.tasks) };
+
     // Plan: docId = goalId (idempotente, merge)
     const plan = await this.plans.create(userId, goalId, {
-      summary: data.summary,
+      summary: normalized.summary,
       recommendations: data.recommendations,
       weeklySchedule: data.weeklySchedule,
     });

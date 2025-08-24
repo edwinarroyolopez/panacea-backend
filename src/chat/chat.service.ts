@@ -35,6 +35,7 @@ export class ChatService {
             goalId: data.goalId,
             planId: data.planId,
             createdAt: data.createdAt,
+            effects: data.effects ?? null
         };
     }
 
@@ -89,6 +90,7 @@ export class ChatService {
         // 3) Ejecutar acción
         let assistantText = 'Te escucho. ¿Quieres que te ayude a crear un objetivo?';
         let planId: string | undefined;
+        let effects: Array<{ type: string; payload?: any }> = [];
 
         if (classification.intent === 'create_goal' && classification.domain) {
             // crea goal del usuario
@@ -103,6 +105,12 @@ export class ChatService {
                 userId, goal.id, goal.title, goal.domain, goal.target ?? null,
             );
             planId = (plan as any).id ?? plan?.id;
+
+            effects.push(
+                { type: 'SET_CURRENT_GOAL', payload: { goalId } },
+                { type: 'PLAN_CREATED', payload: { goalId, planId } },
+                { type: 'REFRESH_SECTIONS', payload: { sections: ['PLAN', 'TASKS_TODAY'] } },
+            );
 
             const tasks = (plan as any).tasks ?? [];
             const preview = tasks.slice(0, 3)
@@ -121,10 +129,11 @@ export class ChatService {
         // 4) Guardar respuesta del asistente
         const assistantDoc = await this.db.collection(this.CHAT_COL).add({
             userId,
-            goalId: goalId ?? null,
-            planId: planId ?? null,
             role: ChatRole.ASSISTANT,
             text: assistantText,
+            goalId: goalId ?? null,
+            planId: planId ?? null,
+            effects: effects.length ? effects : null,
             createdAt: new Date().toISOString(),
         });
 

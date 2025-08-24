@@ -58,7 +58,7 @@ export class GoalsService {
   /** Obtiene un goal por id SOLO si pertenece al user y no está borrado. */
   async findByIdForUser(goalId: string, userId: string): Promise<Goal> {
     const { snap, data } = await this.getOwnedDoc(goalId, userId);
-    if (data.status === GoalStatus.DELETED || data.status === 'DELETED' || data.status === 'deleted') {
+    if (data.status === GoalStatus.DELETED || data.status === 'DELETED' || data.status === 'DELETED') {
       throw new NotFoundException('Goal not found');
     }
     return this.toGoal(snap.id, data);
@@ -81,7 +81,7 @@ export class GoalsService {
     const q = await this.db
       .collection(COLLECTION)
       .where('userId', '==', userId)
-      .where('status', '!=', 'deleted') // Firestore: este filtro requiere index compuesto si combinas con otros
+      .where('status', '!=', 'DELETED') // Firestore: este filtro requiere index compuesto si combinas con otros
       .get();
 
     return q.docs.map((d) => this.toGoal(d.id, d.data()));

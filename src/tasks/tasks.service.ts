@@ -1,7 +1,8 @@
 // src/tasks/tasks.service.ts
-import { Injectable, NotFoundException, ForbiddenException } from '@nestjs/common';
+import { Injectable, NotFoundException, ForbiddenException, BadRequestException } from '@nestjs/common';
 import { FirestoreService } from 'src/firestore/firestore.service';
 import { Task, TaskStatus } from './models/task.model';
+import { addDaysISO, startOfTodayUTC } from 'src/utils/date.utils';
 
 const TASKS = 'tasks';
 const PLANS = 'plans';
@@ -10,11 +11,12 @@ type NewTask = { title: string; dueAt: string; scoreWeight: number };
 
 @Injectable()
 export class TasksService {
-  constructor(private readonly db: FirestoreService) {}
+  constructor(private readonly db: FirestoreService) { }
 
   private toTask(id: string, data: FirebaseFirestore.DocumentData): Task {
     return {
       id,
+      userId: data.userId,
       planId: data.planId,
       title: data.title,
       dueAt: data.dueAt,
@@ -22,6 +24,7 @@ export class TasksService {
       scoreWeight: data.scoreWeight ?? 1,
       createdAt: data.createdAt,
       updatedAt: data.updatedAt,
+      postponedCount: data.postponedCount ?? 0,
     };
   }
 
@@ -33,6 +36,10 @@ export class TasksService {
     const pdata = psnap.data()!;
     if (pdata.userId !== userId) throw new ForbiddenException('Not your plan');
     return pdata;
+  }
+
+  private asDateYYYYMMDD(iso: string) {
+    return iso.slice(0, 10);
   }
 
   /** Crea/actualiza en bloque tareas para un plan del usuario. */
@@ -47,12 +54,14 @@ export class TasksService {
     if (firestore?.batch) {
       const batch = firestore.batch();
       for (const it of items) {
+        const dueDate = this.asDateYYYYMMDD(it.dueAt);
         const ref = col.doc();
         batch.set(ref, {
-          userId,                // guardamos por seguridad (no es necesario exponerlo)
+          userId,
           planId,
           title: it.title,
           dueAt: it.dueAt,
+          dueDate,
           scoreWeight: it.scoreWeight,
           status: TaskStatus.PENDING,
           createdAt: now,
@@ -105,4 +114,71 @@ export class TasksService {
     const u = await ref.get();
     return this.toTask(u.id, u.data()!);
   }
+
+
+  async todayOld(userId: string, dateYYYYMMDD?: string): Promise<Task[]> {
+    const day = dateYYYYMMDD ?? new Date().toISOString().slice(0, 10);
+    // index sugerido: (userId asc, dueDate asc, status asc)
+    const q = await this.db
+      .collection(TASKS)
+      .where('userId', '==', userId)
+      .where('dueDate', '==', day)
+      .where('status', '!=', 'CANCELLED')
+      .orderBy('dueDate', 'asc')
+      .get();
+
+    return q.docs.map((d) => this.toTask(d.id, d.data()));
+  }
+
+
+  async today(userId: string): Promise<Task[]> {
+    // rango día local [00:00, 24:00) -> en ISO UTC
+    const tz: string = 'America/Bogota';
+    const now = new Date();
+    const start = startOfTodayUTC(now, tz);
+    const end = addDaysISO(start, 1);
+    // ⚠️ Firestore pedirá índice compuesto: userId ==, status != DONE, dueAt range
+    const q = await this.db
+      .collection(TASKS)
+      .where('userId', '==', userId)
+      .where('status', 'in', [TaskStatus.PENDING, TaskStatus.IN_PROGRESS]) // evita '!=' y ahorra índice
+      .where('dueAt', '>=', start)
+      .where('dueAt', '<', end)
+      .orderBy('dueAt', 'asc')
+      .get();
+
+    return q.docs.map((d) => this.toTask(d.id, d.data()));
+  }
+
+  async postponeForUser(taskId: string, userId: string, days = 1): Promise<Task> {
+    if (days < 1) throw new BadRequestException('days debe ser >= 1');
+
+    const ref = this.db.collection(TASKS).doc(taskId);
+    const snap = await ref.get();
+    if (!snap.exists) throw new NotFoundException('Task not found');
+
+    const data = snap.data()!;
+    if (data.userId && data.userId !== userId) {
+      throw new ForbiddenException('Not your task');
+    }
+
+    // Base: si dueAt inválido o en pasado lejano, usa ahora mismo como referencia
+    const prev = new Date(data.dueAt ?? Date.now());
+    const base = isNaN(prev.getTime()) ? new Date() : prev;
+
+    // Suma "days" manteniendo hora/min (UTC). Para fines prácticos está OK.
+    const next = new Date(base.getTime());
+    next.setUTCDate(next.getUTCDate() + days);
+
+    const updatedAt = new Date().toISOString();
+    await ref.update({
+      dueAt: next.toISOString(),
+      updatedAt,
+      postponedCount: (data.postponedCount ?? 0) + 1,
+    });
+
+    const out = await ref.get();
+    return this.toTask(out.id, out.data()!);
+  }
+
 }
