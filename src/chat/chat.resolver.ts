@@ -6,22 +6,23 @@ import { CurrentUser, type AuthUser } from '../auth/current-user.decorator';
 
 @Resolver(() => ChatMessage)
 export class ChatResolver {
-  constructor(private readonly chat: ChatService) { }
+  constructor(private readonly chat: ChatService) {}
 
   @Mutation(() => ChatMessage)
   async sendChat(
     @Args('text', { type: () => String }) text: string,
     @CurrentUser() user: AuthUser,
+    @Args('goalId', { type: () => ID, nullable: true }) goalId?: string,
   ) {
-    return this.chat.process(text, user.id);
+    return this.chat.process(text, user.id, goalId);
   }
 
   @Query(() => [ChatMessage])
   async chatHistory(
-    @CurrentUser() user: AuthUser, // ← requerido primero
+    @CurrentUser() user: AuthUser,
     @Args('goalId', { type: () => ID, nullable: true }) goalId?: string,
-    @Args('limit', { type: () => Int, nullable: true, defaultValue: 30 }) limit?: number,
+    @Args('limit', { type: () => Int, nullable: true, defaultValue: 50 }) limit?: number,
   ) {
-    return this.chat.history(user.id, goalId, limit ?? 30);
+    return this.chat.history(user.id, goalId, limit ?? 50);
   }
 }

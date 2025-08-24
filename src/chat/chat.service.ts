@@ -49,27 +49,28 @@ export class ChatService {
     }
 
 
-    async process(text: string, userId: string): Promise<ChatMessage> {
+    async process(text: string, userId: string, goalId?: string): Promise<ChatMessage> {
         // 1) Guarda mensaje del usuario
         const now = new Date().toISOString();
         const userDoc = await this.db.collection(this.CHAT_COL).add({
-            userId, role: ChatRole.USER, text, createdAt: now,
+            userId, goalId: goalId ?? null, role: ChatRole.USER, text, createdAt: now,
         });
+        console.log('[chat] saved user msg', { userId, goalId, id: userDoc.id });
 
         // 2) Clasificar intención con LLM (fallback a heurística)
         const prompt = `
-Eres un NLU para bienestar. Clasifica el mensaje del usuario en JSON:
-Campos:
-- intent: "create_goal" | "link_goal" | "progress" | "other"
-- domain: "sleep" | "weight" | "stress" | null
-- title: string | null       # ejemplo: "Dormir mejor"
-- target: string | null      # ejemplo: "Dormir 7.5h"
-- goalId: string | null      # si hace referencia explícita
+            Eres un NLU para bienestar. Clasifica el mensaje del usuario en JSON:
+            Campos:
+            - intent: "create_goal" | "link_goal" | "progress" | "other"
+            - domain: "sleep" | "weight" | "stress" | null
+            - title: string | null       # ejemplo: "Dormir mejor"
+            - target: string | null      # ejemplo: "Dormir 7.5h"
+            - goalId: string | null      # si hace referencia explícita
 
-Usuario: "${text}"
+            Usuario: "${text}"
 
-Responde SOLO JSON válido.
-`;
+            Responde SOLO JSON válido.
+            `;
         let classification: z.infer<typeof ClassificationSchema> = { intent: 'other', domain: null, title: null, target: null, goalId: null };
         try {
             const raw = await this.llm.generateJson(prompt);
@@ -87,11 +88,10 @@ Responde SOLO JSON válido.
 
         // 3) Ejecutar acción
         let assistantText = 'Te escucho. ¿Quieres que te ayude a crear un objetivo?';
-        let goalId: string | undefined;
         let planId: string | undefined;
 
         if (classification.intent === 'create_goal' && classification.domain) {
-            // Crear goal
+            // crea goal del usuario
             const goal = await this.goals.upsert(userId, {
                 title: classification.title ?? 'Objetivo de bienestar',
                 domain: classification.domain as GoalDomain,
@@ -99,31 +99,33 @@ Responde SOLO JSON válido.
             });
             goalId = goal.id;
 
-            // Generar plan con el orquestador (IA)
             const plan = await this.orch.generatePlanForGoal(
-                userId,
-                goal.id,
-                goal.title,
-                goal.domain,
-                goal.target ?? null, // ← evita el TS2345
+                userId, goal.id, goal.title, goal.domain, goal.target ?? null,
             );
             planId = (plan as any).id ?? plan?.id;
 
-            // Mensaje de respuesta: resumen + 3 tareas
             const tasks = (plan as any).tasks ?? [];
-            const preview = tasks.slice(0, 3).map((t: any, i: number) => `• ${t.title} (${new Date(t.dueAt).toLocaleString('es-CO')})`).join('\n');
+            const preview = tasks.slice(0, 3)
+                .map((t: any) => `• ${t.title} (${new Date(t.dueAt).toLocaleString('es-CO')})`)
+                .join('\n');
+
             assistantText = [
                 `✅ Objetivo creado: **${goal.title}** (${goal.domain}).`,
                 `🧠 Generé un plan inicial para esta semana.`,
                 (plan as any).summary ? `Resumen: ${(plan as any).summary}` : '',
                 preview ? `Primeras tareas:\n${preview}` : '',
-                `Puedes decir “ajusta el plan” si está muy fácil/difícil.`,
+                `Puedes decir "ajusta el plan" si está muy fácil/difícil.`,
             ].filter(Boolean).join('\n');
         }
 
         // 4) Guardar respuesta del asistente
         const assistantDoc = await this.db.collection(this.CHAT_COL).add({
-            userId, role: ChatRole.ASSISTANT, text: assistantText, goalId: goalId ?? null, planId: planId ?? null, createdAt: new Date().toISOString(),
+            userId,
+            goalId: goalId ?? null,
+            planId: planId ?? null,
+            role: ChatRole.ASSISTANT,
+            text: assistantText,
+            createdAt: new Date().toISOString(),
         });
 
         const assistantSnap = await assistantDoc.get();
