@@ -1,9 +1,15 @@
 import { Field, ID, ObjectType, registerEnumType } from '@nestjs/graphql';
 
+
 export enum GoalDomain {
   SLEEP = 'sleep',
-  WEIGHT = 'weight',
   STRESS = 'stress',
+  WEIGHT = 'weight',
+  NUTRITION = 'nutrition',
+  FITNESS = 'fitness',
+  HYDRATION = 'hydration',
+  MINDFULNESS = 'mindfulness',
+  ENERGY = 'energy',
 }
 
 export enum GoalStatus {

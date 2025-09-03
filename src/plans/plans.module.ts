@@ -3,6 +3,7 @@ import { PlansService } from './plans.service';
 import { PlansResolver } from './plans.resolver';
 
 @Module({
-  providers: [PlansService, PlansResolver]
+  providers: [PlansService, PlansResolver],
+  exports: [PlansService],
 })
-export class PlansModule {}
+export class PlansModule { }
